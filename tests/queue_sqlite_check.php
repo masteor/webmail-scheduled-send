@@ -8,7 +8,7 @@
 
 define('INSTALL_PATH', '/var/www/roundcubemail/');
 require INSTALL_PATH . 'program/include/clisetup.php';
-require __DIR__ . '/lib/autoload.php';
+require dirname(__DIR__) . '/lib/autoload.php';
 
 use ScheduledSend\Queue;
 use ScheduledSend\QueueInterface;
@@ -19,7 +19,7 @@ $dbFile = '/tmp/scheduled_send_check_' . getmypid() . '.db';
 $db = rcube_db::factory('sqlite:///' . $dbFile, '', false);
 $db->db_connect('w');
 
-$schema = file_get_contents(__DIR__ . '/SQL/sqlite.initial.sql');
+$schema = file_get_contents(dirname(__DIR__) . '/SQL/sqlite.initial.sql');
 // The driver initializes the full Roundcube schema (including users) when the
 // file is empty, so only the queue table has to be added here.
 $schema = preg_replace('/^\s*--.*$/m', '', $schema);
