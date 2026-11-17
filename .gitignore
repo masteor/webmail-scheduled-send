@@ -14,3 +14,6 @@ config.inc.php
 
 # One-shot fork/push helper (contains no secrets, but is host-specific)
 /finalize_fork.sh
+
+# PR draft, kept for reference only
+/PR-sqlite-support.md
