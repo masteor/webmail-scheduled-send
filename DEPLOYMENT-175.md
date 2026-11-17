@@ -63,10 +63,25 @@ sudo journalctl -u roundcube-scheduled-send.service -n 50 --no-pager
 
 1. `tests/queue_sqlite_check.php` — 15 проверок очереди на настоящем SQLite, включая
    побайтовое сохранение тела с NUL и 8-битным содержимым. `ALL CHECKS PASSED`.
-2. Сквозная доставка: задание №2, письмо ушло (Postfix `pickup` uid=969 → relay
+2. Сквозная доставка через БД: задание №2, письмо ушло (Postfix `pickup` uid=969 → relay
    `mail.te.oaotransenergo.ru` → `status=sent`), задание стало `done`, копия легла в
    `Sent` с флагом `\Seen`, кириллица в теле цела.
-3. Round-trip: письмо, отправленное тем же путём (`sandbox-test`), вернулось в INBOX.
+3. **Сквозная доставка через веб-интерфейс** (настоящий `POST` compose-формы с
+   `_schedule_at` и `_schedule_tz`): Roundcube ответил «Message scheduled for
+   2026-11-17 10:30», в назначенную минуту письмо ушло, задание стало `done`, копия в
+   `Sent` на месте.
+4. **Cancel** (`plugin.scheduled_send.cancel`): задание → `cancelled`, `headers`/`body`
+   обнулены, UI получил «Scheduled message cancelled».
+5. **Restore to Drafts** (`plugin.scheduled_send.restore`): задание → `cancelled`,
+   письмо реально легло в `Drafts`, UI получил «The message was moved back to Drafts».
+6. Round-trip: письмо, отправленное тем же путём (`sandbox-test`), вернулось в INBOX.
+
+Тестовые задания и письма после проверок удалены — очередь пуста, Sent/Drafts чистые.
+
+> **Осторожно при ручной отладке XHR.** Действия `cancel`/`restore` вызываются из UI
+> через `rcmail.http_post()`, который всегда добавляет `_remote=1`. Без этого параметра
+> Roundcube пытается отрендерить HTML-шаблон и отвечает «Файл не найден», хотя само
+> действие при этом выполняется — легко принять рабочую систему за сломанную.
 
 ## Откат
 
