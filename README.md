@@ -42,13 +42,27 @@ curl -L https://github.com/katsar0v/webmail-scheduled-send/archive/refs/tags/v0.
 
 ### 2. Database
 
-Load `SQL/mysql.initial.sql` into the Roundcube database. On Plesk the database is `roundcubemail`:
+Load the schema for your database into the Roundcube database. On Plesk (MySQL/MariaDB) the database is `roundcubemail`:
 
 ```sh
 MYSQL_PWD="$(cat /etc/psa/.psa.shadow)" mysql -uadmin roundcubemail < SQL/mysql.initial.sql
 ```
 
+For a Roundcube instance on SQLite (the Debian/Red Hat package default), load the SQLite schema instead:
+
+```sh
+sqlite3 /var/lib/roundcube/sqlite.db < SQL/sqlite.initial.sql
+```
+
 If Roundcube uses a `db_prefix`, adjust the table names in the file first.
+
+> **Why two schemas.** PDO's SQLite driver builds a single-quoted literal, so a NUL
+> byte ends the value and silently truncates it. Storing an 8-bit MIME body or header
+> that way loses everything from the first NUL (a 256-byte binary payload stores as 0
+> bytes). On SQLite the plugin therefore keeps `headers`, `bcc` and `body` as base64
+> with a `b64:` prefix and decodes them on read; MySQL/MariaDB use real blob columns
+> and store the bytes unchanged. The driver is detected automatically
+> (`rcube_db::$db_provider`), so both schemas work with the same code.
 
 ### 3. Configuration
 
@@ -83,9 +97,9 @@ Run `bin/worker.php` every minute as a user that can read Roundcube's configurat
 
 The worker logs to Roundcube's log as `scheduled_send`. Only one worker runs at a time; a lock file prevents overlap. Set `ROUNDCUBE_PATH` if the plugin is not installed in `<roundcube>/plugins/scheduled_send`.
 
-## Limitations (0.1.0)
+## Limitations (0.1.1)
 
-- MySQL/MariaDB only.
+- MySQL/MariaDB and SQLite. Other databases need their own `SQL/*.initial.sql` (the queue code itself is portable).
 - Elastic skin only.
 - No delivery status notification (DSN) requests.
 - The whole message is stored in the database. The default size limit is 10 MB (`scheduled_send_max_size`). The per-user limits are checked before each new message, so two simultaneous requests can exceed them by one message.

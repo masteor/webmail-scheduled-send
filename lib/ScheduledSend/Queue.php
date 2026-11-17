@@ -22,16 +22,27 @@ class Queue implements QueueInterface
     /** Statuses that purge() may delete. */
     private const FINISHED = [self::DONE, self::CANCELLED, self::FAILED];
 
+    /** Columns whose content may contain arbitrary bytes (8-bit MIME, NUL). */
+    private const BINARY_COLUMNS = ['headers', 'bcc', 'body'];
+
     /** @var \rcube_db */
     private $db;
 
     /** @var string */
     private $table;
 
+    /** @var bool Store binary columns base64-encoded (SQLite) */
+    private $base64Content;
+
     public function __construct(\rcube_db $db)
     {
         $this->db    = $db;
         $this->table = $db->table_name('scheduled_send_queue', true);
+
+        // PDO's SQLite driver builds a single-quoted literal, so a NUL byte ends the
+        // value: content columns would be truncated silently. MySQL/MariaDB use real
+        // blob columns and keep the bytes as they are.
+        $this->base64Content = $db->db_provider === 'sqlite';
     }
 
     public static function datetime(\DateTimeImmutable $time): string
@@ -51,7 +62,7 @@ class Queue implements QueueInterface
             implode(', ', array_fill(0, count($job), '?'))
         );
 
-        $this->query($sql, array_values($job));
+        $this->query($sql, array_values($this->encodeContent($job)));
 
         return (int) $this->db->insert_id('scheduled_send_queue');
     }
@@ -68,7 +79,7 @@ class Queue implements QueueInterface
 
         $row = $this->db->fetch_assoc($this->query($sql, $params));
 
-        return $row ?: null;
+        return $row ? $this->decodeContent($row) : null;
     }
 
     public function listForUser(int $userId): array
@@ -101,12 +112,13 @@ class Queue implements QueueInterface
 
         $row = $this->db->fetch_assoc($this->db->limitquery($sql, 0, 1, $userId, $messageId));
 
-        return $row ?: null;
+        return $row ? $this->decodeContent($row) : null;
     }
 
     public function transition(int $id, string $from, string $to, array $set = [], ?int $userId = null): bool
     {
         $set = $this->filter(['status' => $to, 'updated_at' => self::datetime(new \DateTimeImmutable())] + $set);
+        $set = $this->encodeContent($set);
 
         $assignments = implode(', ', array_map(function ($column) {
             return $this->db->quote_identifier($column) . ' = ?';
@@ -166,6 +178,51 @@ class Queue implements QueueInterface
         }
 
         return $columns;
+    }
+
+    /**
+     * Encode content columns for storage. Only rows that are read back as whole
+     * messages (find/findByMessageId) need decoding, so no row is marked: the
+     * base64 is recognised by its own shape when the job is read.
+     */
+    private function encodeContent(array $row): array
+    {
+        if (!$this->base64Content) {
+            return $row;
+        }
+
+        foreach (self::BINARY_COLUMNS as $column) {
+            if (isset($row[$column]) && is_string($row[$column]) && $row[$column] !== '') {
+                $row[$column] = 'b64:' . base64_encode($row[$column]);
+            }
+        }
+
+        return $row;
+    }
+
+    /**
+     * Reverse of encodeContent(). A no-op where content is stored verbatim, so
+     * a message that happens to start with "b64:" is never mangled.
+     */
+    private function decodeContent(array $row): array
+    {
+        if (!$this->base64Content) {
+            return $row;
+        }
+
+        foreach (self::BINARY_COLUMNS as $column) {
+            if (isset($row[$column]) && is_string($row[$column])
+                && strncmp($row[$column], 'b64:', 4) === 0
+            ) {
+                $decoded = base64_decode(substr($row[$column], 4), true);
+
+                if ($decoded !== false) {
+                    $row[$column] = $decoded;
+                }
+            }
+        }
+
+        return $row;
     }
 
     private function query(string $sql, array $params)

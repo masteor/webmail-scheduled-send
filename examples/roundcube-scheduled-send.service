@@ -1,0 +1,25 @@
+[Unit]
+Description=Roundcube scheduled_send worker (delivers due "send later" messages)
+Documentation=https://github.com/katsar0v/webmail-scheduled-send
+After=network-online.target postfix.service dovecot.service
+
+[Service]
+Type=oneshot
+User=nginx
+Group=nginx
+Environment=ROUNDCUBE_PATH=/var/www/roundcubemail
+ExecStart=/usr/bin/php /var/www/roundcubemail/plugins/scheduled_send/bin/worker.php
+TimeoutStartSec=300
+Nice=10
+
+# NOTE: no ProtectSystem/ProtectHome here on purpose. This worker submits mail
+# through /usr/sbin/sendmail, which is Postfix's setgid postdrop helper: it must
+# write into /var/spool/postfix/maildrop. A read-only filesystem view makes
+# postdrop fail with "mail_queue_enter: Permission denied", and the job is then
+# left in "submitting" (held) instead of being delivered.
+NoNewPrivileges=false
+PrivateTmp=false
+ReadWritePaths=/var/lib/roundcube /var/log/roundcubemail /var/spool/postfix
+
+[Install]
+WantedBy=multi-user.target

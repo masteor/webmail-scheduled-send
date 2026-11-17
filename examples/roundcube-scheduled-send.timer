@@ -1,0 +1,16 @@
+[Unit]
+Description=Run the Roundcube scheduled_send worker every minute
+Documentation=https://github.com/katsar0v/webmail-scheduled-send
+
+[Timer]
+# OnUnitInactiveSec (not OnUnitActiveSec): the service is a short-lived oneshot,
+# so measuring from inactivity is what keeps the next run exactly one minute
+# after the previous one finished. OnUnitActiveSec drifted to "infinity" here.
+OnBootSec=1min
+OnUnitInactiveSec=1min
+AccuracySec=10s
+Persistent=true
+Unit=roundcube-scheduled-send.service
+
+[Install]
+WantedBy=timers.target
